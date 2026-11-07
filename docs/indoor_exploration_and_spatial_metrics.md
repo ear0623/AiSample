@@ -1018,7 +1018,7 @@ python pipeline/indoor_metric_helper.py check --preset dungeon_bunker --corridor
 | 밤 실내(등 꺼짐) | 4~6 | 1:64 이상 | 손전등 없으면 안 보인다 |
 | 지하·벙커 | 3~5 | 1:100 | 비상등만 |
 
-엔진 설정은 `r.DefaultFeature.AutoExposure=False` + `MinBrightness = MaxBrightness`로 고정하고, Post Process Volume에서 `Exposure Compensation`으로 방마다 조정한다. 자동 노출을 꼭 쓰려면 `Speed Up/Down`을 0.8 이상으로 느리게 해서 손전등 토글에 반응하지 않게 한다.
+엔진 설정은 Post Process Volume의 `Metering Mode`를 `Manual`로 두고(또는 `r.DefaultFeature.AutoExposure=False`), `Exposure Compensation`(EV100)으로 방마다 조정한다. 자동 노출을 꼭 쓰려면 `Speed Up/Down`을 0.8 이상으로 느리게 해서 손전등 토글에 반응하지 않게 한다.
 
 ### 14.3 광원 예산
 
