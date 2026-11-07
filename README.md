@@ -92,6 +92,36 @@ python pipeline/tripo_pbr_generator.py batch assets/example_batch.json
 python pipeline/tripo_pbr_generator.py image refs/chair.png --name chair --dry-run
 ```
 
+### 산출물 구조
+
+```
+output/chair/
+├── model.glb                       # 생성 원본 (PBR 맵 임베드)
+├── preview.png                     # 렌더 미리보기
+├── manifest.json                   # task id, 크레딧, 파라미터, 파일 목록, 경고
+├── textures/
+│   ├── T_Chair_basecolor.png
+│   ├── T_Chair_normal.png
+│   ├── T_Chair_metallic_roughness.png   # glTF 원본 (G=rough, B=metal)
+│   ├── T_Chair_roughness.png            # 채널 분해
+│   ├── T_Chair_metallic.png
+│   ├── T_Chair_occlusion.png            # GLB에 AO가 있을 때만
+│   └── T_Chair_ORM.png                  # UE5용 최종 (R=AO, G=Rough, B=Metal)
+└── ue5/                            # --ue5 옵션 시
+    ├── chair.fbx
+    └── chair.fbm/                  # 분리된 텍스처들
+
+output/hero/                        # 블렌더 경로 B 실행 후
+├── hero.blend                      # 하이폴리/로우폴리/케이지, 텍스처 pack
+├── hero_low.fbx                    # 엔진용 로우폴리
+├── blender_report.json             # 검사·감면·베이킹·경고 기록
+└── baked/
+    ├── T_hero_Low_basecolor.png
+    ├── T_hero_Low_normal.png
+    ├── T_hero_Low_roughness.png
+    └── T_hero_Low_ao.png
+```
+
 ### 5) 블렌더에서 가공·베이킹 (경로 B: 캐릭터/모바일)
 
 ```bash
@@ -111,26 +141,6 @@ UE5 Nanite 정적 프랍(경로 A)은 감면 없이 임포트만 합니다.
 blender --background --factory-startup --python pipeline/blender_import.py -- \
   --model output/chair/model.glb --scale-target 1.0 --origin bottom \
   --blend output/chair/chair.blend
-```
-
-### 산출물 구조
-
-```
-output/chair/
-├── model.glb                       # 생성 원본 (PBR 맵 임베드)
-├── preview.png                     # 렌더 미리보기
-├── manifest.json                   # task id, 크레딧, 파라미터, 파일 목록, 경고
-├── textures/
-│   ├── T_Chair_basecolor.png
-│   ├── T_Chair_normal.png
-│   ├── T_Chair_metallic_roughness.png   # glTF 원본 (G=rough, B=metal)
-│   ├── T_Chair_roughness.png            # 채널 분해
-│   ├── T_Chair_metallic.png
-│   ├── T_Chair_occlusion.png            # GLB에 AO가 있을 때만
-│   └── T_Chair_ORM.png                  # UE5용 최종 (R=AO, G=Rough, B=Metal)
-└── ue5/                            # --ue5 옵션 시
-    ├── chair.fbx
-    └── chair.fbm/                  # 분리된 텍스처들
 ```
 
 ## 핵심 옵션
