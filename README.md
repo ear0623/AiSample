@@ -4,7 +4,9 @@
 AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받아도 버티는 에셋"으로 바꾸는 데 필요한 것들 —
 텍스처 분리, de-lighting, ORM 패킹, 블렌더 리토폴로지·베이킹, Nanite 임포트 — 을 코드와 문서로 정리했습니다.
 여기에 더해, 이 저장소는 **오픈월드 월드 제작 가이드**(지형·월드 파티션·PCG·라이팅·최적화)와
-착수 전 수치 설계를 위한 **계획 계산기·체크리스트**를 함께 제공합니다.
+착수 전 수치 설계를 위한 **계획 계산기·체크리스트**를 제공합니다.
+같은 라인에서 **오픈월드 콘텐츠·건축 설계 매뉴얼**(탈것·아이템·건물·배경 배치, 인게임 건축, 건축학 용어·도면·게임 스케일)과
+**언리얼 캐릭터 제작·커스터마이징 가이드**(PC/NPC, 모듈러 의상, 외모 커스터마이징)를 C++ 예제와 함께 제공합니다.
 
 - 생성 엔진: **Tripo3D API v3.1** (클라우드, 최대 200만 삼각형 Ultra 모드) · **Microsoft TRELLIS.2** (로컬 GPU, MIT)
 - 타깃 엔진: **Unreal Engine 5** (Nanite + Lumen), glTF/FBX 공통 규격 준수
@@ -56,6 +58,11 @@ AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받�
 | `pipeline/open_world_helper.py` | 오픈월드 계획 계산기 — 월드 파티션 그리드·스트리밍 처리량, 랜드스케이프 크기·높이 정밀도, RVT 해상도·메모리, HLOD 프록시 수, 38항목 체크리스트 검증. 표준 라이브러리만 사용 |
 | `docs/open_world_creation_pipeline.md` | **오픈월드 제작 가이드.** LWC 좌표계, 지형 DCC/임포트, RVT, World Partition·Data Layer·OFPA, PCG·Nanite Foliage, 도로·수계, Lumen·VSM·대기, HLOD·프로파일링, 8단계 로드맵 |
 | `tests/test_open_world_helper.py` | 66개 테스트 — 셀 반경 계산, 스트리밍 윈도우, 랜드스케이프 크기·정밀도, RVT 해상도·메모리, HLOD, 체크리스트 점수·블로커 |
+| `docs/open_world_content_and_architecture_guide.md` | **콘텐츠·건축 설계 매뉴얼.** 탈것(Chaos Vehicles·네트워크·승하차·주행 AI), 아이템(PrimaryDataAsset·GAS·드롭·스트리밍), 건축 모듈러 킷·루멘 누광, 배경 드레싱·POI, **인게임 건축(프리뷰·스냅·지지 그래프·서버 권위)**, **디테일 기법(트림 시트·가중치 노멀·DBuffer 데칼·버텍스 컬러·패럴랙스)**, 건축학 용어·도면·인간공학 vs 게임 스케일·모듈러 설계 |
+| `docs/unreal_character_and_customization_guide.md` | **캐릭터 가이드.** PC/NPC 클래스 계층·컨트롤러 분기, Significance Manager·Animation Budget Allocator, 모듈러 의상(Leader Pose·병합 비교·클로스·클리핑), 외모 커스터마이징(모프·본 스케일·MID·Groom·직렬화·복제) |
+| `examples/unreal_cpp_character/` | `CharacterCustomizationTypes.h`(슬롯·정의·NetSerialize), `ModularCharacter.h/.cpp`(리더 포즈·비동기 장착·모프·MID·바디 마스킹·서버 RPC) |
+| `examples/unreal_cpp_building/` | `BuildingTypes.h`, `BuildSystemComponent.h/.cpp`(고스트 프리뷰·소켓/그리드 스냅·검증·RPC), `BuildManager.h/.cpp`(서버 검증·스폰·지지 그래프 BFS·연쇄 붕괴) |
+| `tests/test_cpp_examples.py` | 15개 테스트 — 헤더 규약, 괄호 균형, 선언↔정의, `ReplicatedUsing`↔`OnRep`, NetSerialize, 문서 링크·필수 섹션 |
 
 ## 빠른 시작
 
@@ -217,6 +224,23 @@ print(verify("output/chair/textures/T_Chair_ORM.png"))
   7. 최적화: HLOD, 컬링, 텍스처/VT 풀, 프로파일링 도구
   8. 8단계 제작 로드맵과 게이트 조건
   9. 계산기·체크리스트 사용법
+- **[docs/open_world_content_and_architecture_guide.md](docs/open_world_content_and_architecture_guide.md)** — 오픈월드 콘텐츠 제작·배치와 건축 설계
+  1. 탈것: Chaos Vehicles 물리 셋업·서스펜션 계산·네트워크 모드·승하차·스플라인 주행
+  2. 아이템: PrimaryDataAsset 데이터베이스·상호작용 인터페이스·GAS·월드 드롭 인스턴싱·상태 저장
+  3. 건축물: 모듈러 킷·벽 두께와 루멘 누광·실내 컬링(오클루전 포탈의 대안)
+  3.8 **인게임 건축 시스템**: 고스트 프리뷰, 소켓/그리드 스냅, 지지 그래프와 연쇄 붕괴, 서버 권위 흐름
+  3.9 **디테일 표현**: 트림 시트+가중치 노멀, DBuffer 데칼+RVT, 버텍스 컬러 다층 블렌드, 윈도우 인테리어 패럴랙스, 빛샘 방지 수치
+  4. 배경: POI·랜드마크 길찾기, 레벨 드레싱 규칙, HISM·클러터
+  5. 건축학 용어: 구조·입면·장식·한국 전통 건축·오더와 양식
+  6. 도면: 평면/입면/단면/상세, 도면 규약, 도면→게임 워크플로우
+  7. 인간공학 vs 게임 스케일: 문·복도·계단·난간 수치와 CMC 정합
+  8. 모듈러 설계: 100/200/400/500 그리드, 평면·입면·구조 경간, 킷 검증
+- **[docs/unreal_character_and_customization_guide.md](docs/unreal_character_and_customization_guide.md)** — 캐릭터 제작·커스터마이징 (C++)
+  1. PC vs NPC: 클래스 계층, Enhanced Input, AIController·StateTree·EQS, 제작 파이프라인 차이
+  2. 대량 캐릭터: Significance Manager, Animation Budget Allocator, URO, LOD별 감축
+  3. 모듈러 의상: 리더 포즈의 원리와 함정, 분리 vs 런타임 병합, 클로스, 클리핑 4단계 방어
+  4. 외모 커스터마이징: 모프 타깃, 본 스케일링, MID·피부·Groom, 직렬화·복제·저장
+  5. 예제 코드: `examples/unreal_cpp_character`, `tests/test_cpp_examples.py` 검증 항목
 
 ## 오픈월드 월드 제작
 
@@ -302,9 +326,16 @@ slim = prune_tool_definition(raw_definition)                # JSON Schema 가지
 python -m unittest discover -s tests -v
 ```
 
-API 키 없이 돌아갑니다(158개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
+API 키 없이 돌아갑니다(173개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
 MCP 모듈은 100개 도구 카탈로그로 라우팅 정확도·결정성·스키마 프루닝·페이로드 압축을,
-오픈월드 헬퍼는 셀 반경·스트리밍 윈도우·랜드스케이프 정밀도·RVT 메모리·HLOD·체크리스트 점수를 검증합니다.
+오픈월드 헬퍼는 셀 반경·스트리밍 윈도우·랜드스케이프 정밀도·RVT 메모리·HLOD·체크리스트 점수를,
+C++ 예제 검증(`tests/test_cpp_examples.py`)은 헤더 규약·선언↔정의·복제 대응·NetSerialize·문서 링크를 확인합니다.
+
+```bash
+python -m unittest tests.test_cpp_examples -v    # C++ 예제만
+```
+
+C++ 예제는 컴파일 대신 구조적 정합성을 검사합니다(UHT 없이 CI에서 돌릴 수 있게).
 
 ## 사용 전에 알아둘 것
 
