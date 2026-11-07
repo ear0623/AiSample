@@ -3,6 +3,8 @@
 이미지 한 장 또는 텍스트 프롬프트에서 **게임 엔진에 바로 넣을 수 있는 고밀도 메시 + PBR 텍스처**를 뽑아내는 파이프라인입니다.
 AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받아도 버티는 에셋"으로 바꾸는 데 필요한 것들 —
 텍스처 분리, de-lighting, ORM 패킹, 블렌더 리토폴로지·베이킹, Nanite 임포트 — 을 코드와 문서로 정리했습니다.
+여기에 더해, 이 저장소는 **오픈월드 월드 제작 가이드**(지형·월드 파티션·PCG·라이팅·최적화)와
+착수 전 수치 설계를 위한 **계획 계산기·체크리스트**를 함께 제공합니다.
 
 - 생성 엔진: **Tripo3D API v3.1** (클라우드, 최대 200만 삼각형 Ultra 모드) · **Microsoft TRELLIS.2** (로컬 GPU, MIT)
 - 타깃 엔진: **Unreal Engine 5** (Nanite + Lumen), glTF/FBX 공통 규격 준수
@@ -51,6 +53,9 @@ AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받�
 | `pipeline/mcp_token_optimizer.py` | MCP 도구 정의·결과 페이로드 토큰 최적화 (BM25/임베딩 라우터, 스키마 프루닝, Summary-First). 3D 파이프라인과 무관한 독립 모듈, 표준 라이브러리만 사용 |
 | `docs/mcp_token_optimization_guide.md` | **MCP 토큰 절약 가이드.** 도구 정의 오버헤드 분석, 동적 로딩·툴 검색, 프롬프트 캐싱, 스키마 경량화, 페이로드 압축, 컴팩션, 게이트웨이, 클라이언트 설정 |
 | `tests/test_mcp_optimizer.py` | 51개 테스트 — 토큰 근사, 라우팅 정확도·결정성, 스키마 프루닝, 표 변환·페이징·트렁케이션 |
+| `pipeline/open_world_helper.py` | 오픈월드 계획 계산기 — 월드 파티션 그리드·스트리밍 처리량, 랜드스케이프 크기·높이 정밀도, RVT 해상도·메모리, HLOD 프록시 수, 38항목 체크리스트 검증. 표준 라이브러리만 사용 |
+| `docs/open_world_creation_pipeline.md` | **오픈월드 제작 가이드.** LWC 좌표계, 지형 DCC/임포트, RVT, World Partition·Data Layer·OFPA, PCG·Nanite Foliage, 도로·수계, Lumen·VSM·대기, HLOD·프로파일링, 8단계 로드맵 |
+| `tests/test_open_world_helper.py` | 66개 테스트 — 셀 반경 계산, 스트리밍 윈도우, 랜드스케이프 크기·정밀도, RVT 해상도·메모리, HLOD, 체크리스트 점수·블로커 |
 
 ## 빠른 시작
 
@@ -202,6 +207,55 @@ print(verify("output/chair/textures/T_Chair_ORM.png"))
   6. 컨텍스트 편집·히스토리 컴팩션
   7. 게이트웨이/프록시 아키텍처와 오픈소스 도구
   8. 클라이언트별 설정과 벤치마크
+- **[docs/open_world_creation_pipeline.md](docs/open_world_creation_pipeline.md)** — 오픈월드 제작 파이프라인 (UE 5.8 기준)
+  1. 코어 아키텍처: Large World Coordinates, 셀·로딩 반경·스트리밍 처리량
+  2. 지형: Houdini/World Machine/Gaea 침식, 16-bit 하이트맵, Landscape 구조, RVT, 변위
+  3. 월드 파티션: 런타임 그리드, Streaming Source, Data Layer, OFPA, HLOD
+  4. PCG와 식생: 바이옴, PCG 그래프, HISM/Nanite Foliage
+  5. 인프라: 스플라인 도로, Water Body·Gerstner·부력
+  6. 대기·라이팅: Sky Atmosphere, Volumetric Cloud, Lumen, VSM, 시간대
+  7. 최적화: HLOD, 컬링, 텍스처/VT 풀, 프로파일링 도구
+  8. 8단계 제작 로드맵과 게이트 조건
+  9. 계산기·체크리스트 사용법
+
+## 오픈월드 월드 제작
+
+오픈월드는 기능의 합이 아니라 예산의 합입니다. 셀 크기·로딩 반경·RVT 해상도·HLOD 셀처럼
+나중에 바꾸면 월드 전체를 다시 만들어야 하는 숫자를 착수 전에 확정하는 계산기와,
+빠뜨리기 쉬운 항목을 모은 체크리스트가 함께 있습니다(표준 라이브러리만 사용).
+
+```bash
+python pipeline/open_world_helper.py grid --world-km 8 --cell-m 256 --loading-range-m 768 \
+    --bytes-per-cell 30000000 --speed-mps 6
+```
+
+```text
+월드 8,000 m  |  셀 256 m  |  로딩 반경 768 m
+  그리드            32 x 32 = 1,024 셀
+  동시 로드 셀      최대 45개 (7x7 정사각형의 모서리 제외)
+  셀 통과 시간      42.7 s  (분당 1.4 셀, 6 m/s)
+  로드 윈도우       106.7 s
+  셀 데이터         28.6 MB  -> 필요 처리량 0.3 MB/s
+  상주 추정         1,287 MB
+```
+
+```bash
+python pipeline/open_world_helper.py landscape --target-m 4000 --spacing-m 1.0
+python pipeline/open_world_helper.py rvt --world-m 8129 --texels-per-m 0.5 --layout base_color_normal
+python pipeline/open_world_helper.py hlod --world-km 8
+python pipeline/open_world_helper.py checklist --print-default > world_status.json
+```
+
+| 명령 | 계산하는 것 |
+| --- | --- |
+| `grid` | 셀 수, 동시 로드 셀, 로딩 윈도우, 필요 스트리밍 처리량, 상주 메모리 |
+| `landscape` | 권장 정점 크기, 컴포넌트·드로우콜, Z scale, 높이 정밀도, 하이트맵 용량 |
+| `rvt` | 해상도·타일 수, 텍셀당 바이트, mip0/전체 밉/페이지 테이블/풀 메모리 |
+| `hlod` | 레이어별 프록시 액터 수, 동시 로드 수, 빌드 시간 추정, 배치 경고 |
+| `checklist` | 38개 항목의 준비도 점수와 필수 블로커 |
+
+배경 이론과 실무 판단 기준은 [docs/open_world_creation_pipeline.md](docs/open_world_creation_pipeline.md)에 정리했습니다
+(2026-11, UE 5.8 기준. Mesh Terrain/Nanite Foliage/Water/Fast Geometry Streaming은 실험 표기).
 
 ## MCP 토큰 최적화
 
@@ -248,8 +302,9 @@ slim = prune_tool_definition(raw_definition)                # JSON Schema 가지
 python -m unittest discover -s tests -v
 ```
 
-API 키 없이 돌아갑니다(92개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
-MCP 모듈은 100개 도구 카탈로그로 라우팅 정확도·결정성·스키마 프루닝·페이로드 압축을 검증합니다.
+API 키 없이 돌아갑니다(158개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
+MCP 모듈은 100개 도구 카탈로그로 라우팅 정확도·결정성·스키마 프루닝·페이로드 압축을,
+오픈월드 헬퍼는 셀 반경·스트리밍 윈도우·랜드스케이프 정밀도·RVT 메모리·HLOD·체크리스트 점수를 검증합니다.
 
 ## 사용 전에 알아둘 것
 

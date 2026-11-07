@@ -1,7 +1,7 @@
 """AI 3D 에셋 생성 파이프라인 패키지.
 
-``mcp_token_optimizer`` 는 3D 파이프라인과 무관한 MCP 토큰 최적화 유틸리티로,
-표준 라이브러리만 사용합니다.
+``mcp_token_optimizer`` 는 MCP 토큰 최적화, ``open_world_helper`` 는
+오픈월드 제작 계획 계산기로, 둘 다 표준 라이브러리만 사용합니다.
 """
 
 __all__ = [
@@ -10,4 +10,5 @@ __all__ = [
     "texture_packer",
     "glb_texture_tools",
     "mcp_token_optimizer",
+    "open_world_helper",
 ]
