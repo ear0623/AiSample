@@ -1022,8 +1022,14 @@ def ensure_uv(obj, method: str, warnings: list[str]) -> bool:
         _selection([obj])
         with _override(obj):
             bpy.ops.object.mode_set(mode="EDIT")
+        # Edit Mode 연산은 edit_object가 컨텍스트에 있어야 확실히 동작한다.
+        with bpy.context.temp_override(
+            object=obj, active_object=obj, edit_object=obj,
+            selected_objects=[obj], selected_editable_objects=[obj],
+        ):
             bpy.ops.mesh.select_all(action="SELECT")
             bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.02)
+        with _override(obj):
             bpy.ops.object.mode_set(mode="OBJECT")
         return True
     except Exception as exc:  # noqa: BLE001
