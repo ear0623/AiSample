@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 비밀값
+.env
+*.key
+
+# 생성 산출물 (모델/텍스처는 용량이 크므로 저장소에 커밋하지 않는다)
+output/
+downloads/
+*.glb
+*.fbx
+*.zip
+
+# 로그/임시
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

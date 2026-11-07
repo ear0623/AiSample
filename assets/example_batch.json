@@ -1,0 +1,26 @@
+{
+  "defaults": {
+    "geometry_quality": "detailed",
+    "texture_quality": "detailed",
+    "texture_version": "v3.5-20260815"
+  },
+  "assets": [
+    {
+      "name": "chair",
+      "image": "refs/chair.png",
+      "face_limit": 150000
+    },
+    {
+      "name": "barrel",
+      "image": "refs/barrel.png",
+      "face_limit": 80000,
+      "texture_quality": "standard"
+    },
+    {
+      "name": "desk_lamp",
+      "prompt": "a brass art deco desk lamp with a frosted glass shade, tarnished metal",
+      "negative_prompt": "blurry, low quality, broken mesh, floating parts",
+      "face_limit": 120000
+    }
+  ]
+}
