@@ -7,6 +7,8 @@ AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받�
 착수 전 수치 설계를 위한 **계획 계산기·체크리스트**를 제공합니다.
 같은 라인에서 **오픈월드 콘텐츠·건축 설계 매뉴얼**(탈것·아이템·건물·배경 배치, 인게임 건축, 건축학 용어·도면·게임 스케일)과
 **언리얼 캐릭터 제작·커스터마이징 가이드**(PC/NPC, 모듈러 의상, 외모 커스터마이징)를 C++ 예제와 함께 제공합니다.
+여기에 **인게임 실내 탐사 수치·공간 묘사 가이드**(복도·문·층고·계단 실측 수치, 3인칭 카메라 붐 계산, 환경 스토리텔링, 방 단위 최적화)를
+복도 폭·문 폭·층고·암 길이를 넣으면 클리핑 위험도와 쾌적도를 계산하는 CLI와 함께 넣었습니다.
 
 - 생성 엔진: **Tripo3D API v3.1** (클라우드, 최대 200만 삼각형 Ultra 모드) · **Microsoft TRELLIS.2** (로컬 GPU, MIT)
 - 타깃 엔진: **Unreal Engine 5** (Nanite + Lumen), glTF/FBX 공통 규격 준수
@@ -63,6 +65,9 @@ AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받�
 | `examples/unreal_cpp_character/` | `CharacterCustomizationTypes.h`(슬롯·정의·NetSerialize), `ModularCharacter.h/.cpp`(리더 포즈·비동기 장착·모프·MID·바디 마스킹·서버 RPC) |
 | `examples/unreal_cpp_building/` | `BuildingTypes.h`, `BuildSystemComponent.h/.cpp`(고스트 프리뷰·소켓/그리드 스냅·검증·RPC), `BuildManager.h/.cpp`(서버 검증·스폰·지지 그래프 BFS·연쇄 붕괴) |
 | `tests/test_cpp_examples.py` | 15개 테스트 — 헤더 규약, 괄호 균형, 선언↔정의, `ReplicatedUsing`↔`OnRep`, NetSerialize, 문서 링크·필수 섹션 |
+| `pipeline/indoor_metric_helper.py` | 실내 탐사 수치 계산기 — 용도별 프리셋(주거·오피스·상업·던전·산업), 복도 폭·문·층고·암 길이로 카메라 클리핑 위험도·쾌적도 판정, 계단 Blondel·법규·CMC 정합, 소품 밀도 예산. 표준 라이브러리만 사용 |
+| `docs/indoor_exploration_and_spatial_metrics.md` | **실내 탐사 가이드.** 플레이어·복도·문·층고·계단·가구 치수, SpringArm 기하와 동적 단축·벽 페이드(C++), 4층위 환경 스토리텔링·단서 설계·조명·발소리, 방 배치 토폴로지·소품 예산·방 단위 수면·프로파일링 |
+| `tests/test_indoor_metrics.py` | 63개 테스트 — 카메라 기하(자유 요·허용 암·피치), 공간 판정·블로커, 계단 비·법규·CMC, 프리셋 정합, 소품 밀도, CLI JSON/에러 |
 
 ## 빠른 시작
 
@@ -241,6 +246,11 @@ print(verify("output/chair/textures/T_Chair_ORM.png"))
   3. 모듈러 의상: 리더 포즈의 원리와 함정, 분리 vs 런타임 병합, 클로스, 클리핑 4단계 방어
   4. 외모 커스터마이징: 모프 타깃, 본 스케일링, MID·피부·Groom, 직렬화·복제·저장
   5. 예제 코드: `examples/unreal_cpp_character`, `tests/test_cpp_examples.py` 검증 항목
+- **[docs/indoor_exploration_and_spatial_metrics.md](docs/indoor_exploration_and_spatial_metrics.md)** — 인게임 실내 탐사 수치와 공간 세부 묘사
+  1. 플레이어·복도·문·천장·계단·가구의 실측 수치와 UE 기본값의 차이
+  2. 3인칭 카메라 붐 기하: 자유 회전각·필요 복도 폭·동적 단축·벽 페이드(C++)
+  3. 시간의 4층위, 3단서+1질문, 밀도·리듬, 길찾기·프레이밍, 조명·발소리
+  4. 방 배치 토폴로지·락앤키, 소품 밀도 예산, 방 단위 오클루전·수면, 예산표
 
 ## 오픈월드 월드 제작
 
@@ -280,6 +290,43 @@ python pipeline/open_world_helper.py checklist --print-default > world_status.js
 
 배경 이론과 실무 판단 기준은 [docs/open_world_creation_pipeline.md](docs/open_world_creation_pipeline.md)에 정리했습니다
 (2026-11, UE 5.8 기준. Mesh Terrain/Nanite Foliage/Water/Fast Geometry Streaming은 실험 표기).
+
+## 실내 탐사 수치
+
+실내는 "지나갈 수 있는가"와 "카메라가 벽을 뚫는가"가 별개 문제입니다. 복도 180 cm, 문 120 cm를 맞춰도
+3인칭 카메라가 벽에 붙으면 그 방은 못 쓰게 됩니다. 아래 계산기는 복도·문·층고·암 길이를 받아
+자유 회전각과 필요 후퇴량을 풀어 클리핑 위험도와 쾌적도를 내고, 계단과 소품 밀도까지 같이 검사합니다.
+
+```bash
+python pipeline/indoor_metric_helper.py presets          # 용도별 프리셋
+python pipeline/indoor_metric_helper.py check --preset office_lab --corridor 200
+python pipeline/indoor_metric_helper.py camera --corridor 180 --ceiling 300 --arm 220 --pitch 15
+python pipeline/indoor_metric_helper.py stairs --riser 18 --tread 28 --floor-height 320
+python pipeline/indoor_metric_helper.py clutter --area 40 --grade dense
+```
+
+```text
+주의  |  쾌적도 79.4 / 100  |  클리핑 위험도 63.3 / 100  (residential)
+  (위험도는 카메라를 벽 쪽으로 완전히 돌렸을 때 기준 — 낮을수록 여유가 크다)
+  복도 180 cm | 문 110x220 cm | 천장 300 cm | 암 220 cm
+  카메라: 좌우 +-21.5도, 상향 38.2도, 허용 암 81 cm (first_person)
+
+  [OK  ] 복도 1인 통과                         180 cm  폭 180 cm, 캡슐 지름 68 cm(어깨 46 cm보다 22 cm 큼) -> 좌우 여유 56 cm. 탐사 기준 150 cm 미만이면 벽이 시야를 계속 때린다
+  [WARN] 2인 교행                            180 cm  두 캐릭터(60 cm) + 사이 여유 60 cm = 180 cm 필요. NPC가 지나다니는 공간이면 200 cm 이상
+  [FAIL] 카메라 좌우 회전 여유                  21.53 deg  암 220 cm로 좌우 22도까지 벽에 닿지 않는다 (필요 각 45도)
+  ...
+```
+
+| 명령 | 계산하는 것 |
+| --- | --- |
+| `presets` / `preset` | 주거·오피스·상업·던전·산업의 권장 복도·문·천장·계단·암·소품 밀도 |
+| `camera` | 자유 요·상향 각, 벽 정면에서 허용되는 암, 후퇴율, 1인칭 전환 필요 여부 |
+| `check` | 복도 통과·교행·소품 여유, 문 통과·상인방, 천장·카메라 피치, 웅크리기, 계단까지 한 번에 |
+| `stairs` | Blondel 2R+T, 한국 건축법, 경사각, CMC 44.765도 정합, 단수·계단참·유효높이 |
+| `clutter` | 방 면적·밀도 등급별 소품 개수·종류, ISM/HISM 선택, 삼각형·드로우 추정 |
+
+배경 이론(플레이어·복도·문·계단 실측, 카메라 기하, 환경 스토리텔링, 방 단위 최적화)은
+[docs/indoor_exploration_and_spatial_metrics.md](docs/indoor_exploration_and_spatial_metrics.md)에 정리했습니다.
 
 ## MCP 토큰 최적화
 
@@ -326,9 +373,10 @@ slim = prune_tool_definition(raw_definition)                # JSON Schema 가지
 python -m unittest discover -s tests -v
 ```
 
-API 키 없이 돌아갑니다(173개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
+API 키 없이 돌아갑니다(236개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
 MCP 모듈은 100개 도구 카탈로그로 라우팅 정확도·결정성·스키마 프루닝·페이로드 압축을,
 오픈월드 헬퍼는 셀 반경·스트리밍 윈도우·랜드스케이프 정밀도·RVT 메모리·HLOD·체크리스트 점수를,
+실내 헬퍼는 카메라 자유 요·허용 암·피치 기하, 공간 판정과 블로커, 계단 비·법규·CMC, 프리셋 정합, 소품 밀도를,
 C++ 예제 검증(`tests/test_cpp_examples.py`)은 헤더 규약·선언↔정의·복제 대응·NetSerialize·문서 링크를 확인합니다.
 
 ```bash
