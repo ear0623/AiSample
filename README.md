@@ -48,6 +48,9 @@ AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받�
 | `docs/blender_pipeline.md` | **블렌더 가공 문서.** 폴리곤 감면 의사결정, Decimate/Quadriflow, UV·케이지, Cycles 하이폴리→로우폴리 베이킹, 색공간, 엔진 익스포트 |
 | `docs/trellis2_local_setup.md` | TRELLIS.2 로컬 GPU 파이프라인 구축 가이드 (24GB VRAM, Linux) |
 | `tests/test_pipeline.py` | 41개 테스트 — GLB 파싱, 채널 매핑, ORM 패킹, payload 검증, API 재시도/에러, 블렌더 텍스처 슬롯·감면 계산 |
+| `pipeline/mcp_token_optimizer.py` | MCP 도구 정의·결과 페이로드 토큰 최적화 (BM25/임베딩 라우터, 스키마 프루닝, Summary-First). 3D 파이프라인과 무관한 독립 모듈, 표준 라이브러리만 사용 |
+| `docs/mcp_token_optimization_guide.md` | **MCP 토큰 절약 가이드.** 도구 정의 오버헤드 분석, 동적 로딩·툴 검색, 프롬프트 캐싱, 스키마 경량화, 페이로드 압축, 컴팩션, 게이트웨이, 클라이언트 설정 |
+| `tests/test_mcp_optimizer.py` | 51개 테스트 — 토큰 근사, 라우팅 정확도·결정성, 스키마 프루닝, 표 변환·페이징·트렁케이션 |
 
 ## 빠른 시작
 
@@ -190,6 +193,54 @@ print(verify("output/chair/textures/T_Chair_ORM.png"))
   5. Cycles 하이폴리→로우폴리 베이킹 (normal/AO/roughness/basecolor/metallic)
   6. Principled 노드 구성과 색공간, 엔진 익스포트 설정
 - **[docs/trellis2_local_setup.md](docs/trellis2_local_setup.md)** — 로컬 GPU에서 TRELLIS.2 돌리기
+- **[docs/mcp_token_optimization_guide.md](docs/mcp_token_optimization_guide.md)** — MCP 연동 시 토큰 절약
+  1. 토큰 폭증 원인(도구 정의·원시 페이로드·히스토리 누적)과 비용 계산
+  2. 동적 도구 로딩(툴 검색·점진적 공개·코드 실행/Code Mode)
+  3. 프롬프트 캐싱과 MCP 서버를 캐시 친화적으로 만드는 규칙
+  4. JSON Schema 경량화
+  5. 결과 페이로드 압축(Summary-First·표 변환·페이징)
+  6. 컨텍스트 편집·히스토리 컴팩션
+  7. 게이트웨이/프록시 아키텍처와 오픈소스 도구
+  8. 클라이언트별 설정과 벤치마크
+
+## MCP 토큰 최적화
+
+MCP 서버를 여러 개 붙이면 질문하기 전에 도구 정의만으로 수만 토큰이 나갑니다. 이 저장소에는 그 비용을 줄이는
+독립 모듈과 가이드가 함께 있습니다(3D 파이프라인과는 무관, 표준 라이브러리만 사용).
+
+```bash
+python -m pipeline.mcp_token_optimizer      # 100개 도구 카탈로그 라우팅 데모
+```
+
+```text
+catalog: 100 tools, baseline definitions = 38,363 tokens
+
+- 열린 버그 이슈 목록을 GitHub에서 뽑아서 Slack으로 알려줘
+    selected: github__list_issues, slack__post_message
+    tokens: 821 / 38,363  (97.9% saved)
+
+payload: raw JSON -> summary-first
+    21,117 -> 99 tokens  (99.5% saved)
+```
+
+```python
+from pipeline.mcp_token_optimizer import ToolRouter, sample_catalog, prune_tool_definition
+
+router = ToolRouter(sample_catalog())                       # 실제 tools/list 결과로도 구성 가능
+routed = router.route("열린 버그를 Slack으로 알려줘", k=2)   # 필요한 도구만 주입
+slim = prune_tool_definition(raw_definition)                # JSON Schema 가지치기
+```
+
+핵심 수치는 [docs/mcp_token_optimization_guide.md](docs/mcp_token_optimization_guide.md)에 정리했습니다
+(2026-11 기준 공식 문서·실측 인용, 토큰 근사치는 비교용).
+
+| 기법 | 측정된 효과 |
+| --- | --- |
+| 툴 검색/지연 로딩 | 50+ 도구 72K → 8.7K토큰(Anthropic), 131도구 46,273 → 843(Claude Code 실측) |
+| 코드 실행(Code Mode) | 150K → 2K(98.7%), API 2,500개 → 약 1,000토큰(Cloudflare) |
+| 프롬프트 캐싱 | 캐시 읽기 0.1×(Anthropic), 같은 대화 21턴 기준 −89% |
+| 스키마 경량화 | 도구 1개 937 → 237토큰(−75%) |
+| 결과 요약·표 변환 | 300행 JSON 21,021 → 96토큰(요약), 표 −82% |
 
 ## 테스트
 
@@ -197,7 +248,8 @@ print(verify("output/chair/textures/T_Chair_ORM.png"))
 python -m unittest discover -s tests -v
 ```
 
-API 키 없이 돌아갑니다. 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인합니다.
+API 키 없이 돌아갑니다(92개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
+MCP 모듈은 100개 도구 카탈로그로 라우팅 정확도·결정성·스키마 프루닝·페이로드 압축을 검증합니다.
 
 ## 사용 전에 알아둘 것
 
