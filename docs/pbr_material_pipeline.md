@@ -395,6 +395,29 @@ Output Log > Cmd:  py "C:/project/ai3d/pipeline/ue5_import.py"
 
 파일 상단의 `ASSET_NAME`, `SOURCE_DIR`, `CONTENT_DIR`, `MASTER_MATERIAL`만 프로젝트에 맞게 고치면, 임포트 → 텍스처 압축 설정 → Material Instance 생성 → Nanite 활성화까지 처리합니다. 엔진 버전에 따라 프로퍼티명이 다를 수 있으므로 첫 실행 로그를 확인하세요.
 
+### 5.8 블렌더에서의 가공·베이킹
+
+UE5에 넣기 전에 블렌더에서 메시를 손보는 경우가 많습니다. **폴리곤을 줄여야 하는지는 타깃에 따라 갈립니다.**
+
+| | 경로 A — Nanite 정적 프랍 | 경로 B — 캐릭터/모바일 |
+| --- | --- | --- |
+| 대상 | 배경, 소품, 건축 요소 | 캐릭터·스키닝, 모바일, 비-Nanite, LOD |
+| 감면 | 불필요(원본 유지) | 필수(목표 삼각형 수) |
+| 블렌더 작업 | 임포트 → 머티리얼/스케일 정리 | 리토폴로지 → UV → 케이지 → Cycles 베이킹 |
+| 디테일 | 메시가 그대로 | 노멀/AO/러프니스 맵으로 이전 |
+
+`pipeline/blender_import.py`가 임포트부터 PBR 노드 구성, 목표 삼각형 감면, UV, 케이지, Cycles 하이폴리→로우폴리 베이킹, FBX/GLB 익스포트까지 처리합니다. 폴리곤 감면 판단, Decimate/Quadriflow 실무, 베이킹 설정값, 색공간, 엔진 익스포트 설정은 **[docs/blender_pipeline.md](blender_pipeline.md)** 에 정리했습니다.
+
+```bash
+# 경로 B 예시: 120만 삼각형 캐릭터 -> 3만 + 2K PBR 베이킹
+blender --background --factory-startup --python pipeline/blender_import.py -- \
+  --model output/hero/model.glb --target-tris 30000 \
+  --bake normal,ao,roughness,basecolor --bake-size 2048 \
+  --export-fbx output/hero/hero_low.fbx
+```
+
+> 베이킹된 노멀맵은 탄젠트 공간 +Y(OpenGL) 규약입니다. UE5로 넣을 때는 `ue5_import.py`가 기본으로 Green 채널을 뒤집습니다(5.3절).
+
 ---
 
 ## 6. 품질 검증 체크리스트

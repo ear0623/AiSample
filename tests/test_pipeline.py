@@ -36,6 +36,7 @@ from pipeline.tripo_client import (  # noqa: E402
     build_text_payload,
 )
 import pipeline.tripo_pbr_generator as gen  # noqa: E402
+from pipeline import blender_import as blender  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -399,6 +400,127 @@ class ClientTests(unittest.TestCase):
             client.download("https://cdn/m.glb", target)
             self.assertTrue(target.exists())
             self.assertEqual(target.read_bytes(), b"data")
+
+
+# --------------------------------------------------------------------------- #
+# 블렌더 연동 (bpy 없이 순수 함수만)
+# --------------------------------------------------------------------------- #
+class BlenderTextureTests(unittest.TestCase):
+    def test_slot_names_from_pipeline_output(self) -> None:
+        cases = {
+            "T_Chair_basecolor.png": "basecolor",
+            "T_Chair_normal.png": "normal",
+            "T_Chair_ORM.png": "orm",
+            "T_Chair_metallic_roughness.png": "metallic_roughness",
+            "T_Chair_roughness.png": "roughness",
+            "T_Chair_metallic.png": "metallic",
+            "T_Chair_occlusion.png": "occlusion",
+            "T_Chair_emissive.png": "emissive",
+        }
+        for name, expected in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(blender.parse_texture_name(name), ("", expected))
+
+    def test_normal_is_not_confused_with_orm(self) -> None:
+        # 'normal'은 부분 문자열로 'orm'을 포함한다(n-orm-al). 토큰 비교로 막아야 한다.
+        self.assertEqual(blender.parse_texture_name("chair_normal.png")[1], "normal")
+        self.assertEqual(blender.parse_texture_name("chair_orm.png")[1], "orm")
+        self.assertNotEqual(blender.parse_texture_name("chair_normal.png")[1], "orm")
+
+    def test_material_group_prefix(self) -> None:
+        self.assertEqual(blender.parse_texture_name("m1_basecolor.png"), ("m1", "basecolor"))
+        self.assertEqual(blender.parse_texture_name("T_Hero_m0_normal.png"), ("m0", "normal"))
+
+    def test_camel_case_and_unknown(self) -> None:
+        self.assertEqual(blender.parse_texture_name("Hero_BaseColor.tga")[1], "basecolor")
+        self.assertEqual(blender.parse_texture_name("Hero_NormalMap.jpg")[1], "normal")
+        self.assertIsNone(blender.parse_texture_name("Hero_specular.png")[1])
+
+
+class BlenderPlanTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def _touch(self, *names: str) -> None:
+        for name in names:
+            (self.dir / name).write_bytes(b"")
+
+    def test_discover_groups_and_prefers_stem(self) -> None:
+        self._touch("T_Hero_basecolor.png", "T_Hero_normal.png", "body_basecolor.png")
+        warnings: list[str] = []
+        groups = blender.discover_textures(self.dir, stem="hero", warnings=warnings)
+        self.assertEqual(groups[""]["basecolor"].name, "T_Hero_basecolor.png")
+        self.assertIn("normal", groups[""])
+        self.assertTrue(any("basecolor" in message for message in warnings))
+
+    def test_discover_missing_dir_warns(self) -> None:
+        warnings: list[str] = []
+        groups = blender.discover_textures(self.dir / "nope", warnings=warnings)
+        self.assertEqual(groups, {})
+        self.assertTrue(warnings)
+
+    def test_orm_routes_rgb_channels(self) -> None:
+        maps = {"orm": Path(
+            "T_Hero_ORM.png"), "basecolor": Path("T_Hero_basecolor.png")}
+        plan = blender.plan_channels(maps)
+        self.assertEqual(plan["roughness"][0], "orm")
+        self.assertEqual(plan["roughness"][2], "G")
+        self.assertEqual(plan["metallic"][2], "B")
+        self.assertEqual(plan["ao"][2], "R")
+
+    def test_gltf_mr_with_separate_ao(self) -> None:
+        maps = {
+            "metallic_roughness": Path("mr.png"),
+            "occlusion": Path("ao.png"),
+        }
+        plan = blender.plan_channels(maps)
+        self.assertEqual(plan["roughness"], ("metallic_roughness", maps["metallic_roughness"], "G"))
+        self.assertEqual(plan["metallic"], ("metallic_roughness", maps["metallic_roughness"], "B"))
+        self.assertEqual(plan["ao"], ("occlusion", maps["occlusion"], "R"))
+
+    def test_individual_maps_override_packed_channels(self) -> None:
+        maps = {
+            "orm": Path("orm.png"),
+            "roughness": Path("rough.png"),
+            "metallic": Path("metal.png"),
+        }
+        plan = blender.plan_channels(maps)
+        self.assertEqual(plan["roughness"], ("file", maps["roughness"], None))
+        self.assertEqual(plan["metallic"], ("file", maps["metallic"], None))
+        self.assertEqual(plan["ao"][2], "R")
+        self.assertTrue(any("덮어씁니다" in note for note in plan["notes"]))
+
+    def test_ao_mode_ignore_drops_ao(self) -> None:
+        plan = blender.plan_channels({"orm": Path("orm.png")}, ao_mode="ignore")
+        self.assertIsNone(plan["ao"])
+
+
+class BlenderWorkflowTests(unittest.TestCase):
+    def test_ratio_for_target(self) -> None:
+        self.assertAlmostEqual(blender.ratio_for_target(1_200_000, 30_000), 0.025)
+        self.assertEqual(blender.ratio_for_target(1_000, 5_000), 1.0)
+        self.assertEqual(blender.ratio_for_target(0, 5_000), 0.0)
+        self.assertEqual(blender.ratio_for_target(1_000, 0), 0.0)
+
+    def test_scale_factor(self) -> None:
+        self.assertAlmostEqual(blender.scale_factor_for(2.0, 1.0), 0.5)
+        self.assertEqual(blender.scale_factor_for(0.0, 1.0), 1.0)
+        self.assertEqual(blender.scale_factor_for(2.0, 0.0), 1.0)
+
+    def test_bake_types(self) -> None:
+        self.assertEqual(blender.parse_bake_types("normal, AO ,roughness"), ["normal", "ao", "roughness"])
+        self.assertEqual(blender.parse_bake_types(""), [])
+        with self.assertRaises(ValueError):
+            blender.parse_bake_types("displacement")
+
+    def test_route_description(self) -> None:
+        self.assertIn("A", blender.describe_route(0, 0.0, []))
+        self.assertIn("B", blender.describe_route(5000, 0.0, []))
+        self.assertIn("베이킹", blender.describe_route(0, 0.1, ["normal"]))
 
 
 if __name__ == "__main__":
