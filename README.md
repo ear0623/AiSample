@@ -9,6 +9,8 @@ AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받�
 **언리얼 캐릭터 제작·커스터마이징 가이드**(PC/NPC, 모듈러 의상, 외모 커스터마이징)를 C++ 예제와 함께 제공합니다.
 여기에 **인게임 실내 탐사 수치·공간 묘사 가이드**(복도·문·층고·계단 실측 수치, 3인칭 카메라 붐 계산, 환경 스토리텔링, 방 단위 최적화)를
 복도 폭·문 폭·층고·암 길이를 넣으면 클리핑 위험도와 쾌적도를 계산하는 CLI와 함께 넣었습니다.
+그리고 **절차 생성 차량·실내 에셋 트러블슈팅 가이드**(LP 저작·베이킹 무결점·텍스처 VRAM 예산)를
+차종 수·해상도·포맷으로 18 차종 VRAM 을 계산하고, 익스플로전 오프셋·케이지 여유를 검사하는 도구와 함께 넣었습니다.
 
 - 생성 엔진: **Tripo3D API v3.1** (클라우드, 최대 200만 삼각형 Ultra 모드) · **Microsoft TRELLIS.2** (로컬 GPU, MIT)
 - 타깃 엔진: **Unreal Engine 5** (Nanite + Lumen), glTF/FBX 공통 규격 준수
@@ -68,6 +70,9 @@ AI 생성 결과물을 "예쁜 스크린샷"에서 "엔진에서 조명을 받�
 | `pipeline/indoor_metric_helper.py` | 실내 탐사 수치 계산기 — 용도별 프리셋(주거·오피스·상업·던전·산업), 복도 폭·문·층고·암 길이로 카메라 클리핑 위험도·쾌적도 판정, 계단 Blondel·법규·CMC 정합, 소품 밀도 예산. 표준 라이브러리만 사용 |
 | `docs/indoor_exploration_and_spatial_metrics.md` | **실내 탐사 가이드.** 플레이어·복도·문·층고·계단·가구 치수, SpringArm 기하와 동적 단축·벽 페이드(C++), 4층위 환경 스토리텔링·단서 설계·조명·발소리, 방 배치 토폴로지·소품 예산·방 단위 수면·프로파일링 |
 | `tests/test_indoor_metrics.py` | 63개 테스트 — 카메라 기하(자유 요·허용 암·피치), 공간 판정·블로커, 계단 비·법규·CMC, 프리셋 정합, 소품 밀도, CLI JSON/에러 |
+| `pipeline/vehicle_asset_optimizer.py` | 차량 텍스처 VRAM 계산기 + 베이킹 도구 — 포맷별 bpp·밉 체인 실크기, 차종/대수별 상주량·예산 비율·절감 시나리오, ORM 패킹 절감률, 겹판 익스플로전 오프셋, 케이지 여유(0.4~35%) 검증, 12단계 체크리스트. 표준 라이브러리만 사용 |
+| `docs/blender_asset_production_troubleshooting_guide.md` | **차량 에셋 트러블슈팅 가이드.** Geometry Nodes `IsLowPoly` 스위치와 프로파일 세그먼트 오차 계산, 차체 리토폴로지 3방법 비교(VDB+Decimate+Shrinkwrap), 커스텀 노멀 전송 순서, 클러스터 6+1 분할, 겹판·광선 놓침·탄젠트(MikkTSpace·3c), 18 차종 1,440 MiB VRAM 계산과 2,000대 인스턴싱 |
+| `tests/test_vehicle_asset_optimizer.py` | 109개 테스트 — 포맷 크기·밉 체인·블록 최소 1블록, 함대 예산·판정·시나리오, ORM 절감률(66.7%/33.3%), 익스플로전 그룹·잔여 겹침, 케이지 토폴로지·여유·실루엣, CLI 텍스트/JSON, 문서 정합 |
 
 ## 빠른 시작
 
@@ -251,6 +256,13 @@ print(verify("output/chair/textures/T_Chair_ORM.png"))
   2. 3인칭 카메라 붐 기하: 자유 회전각·필요 복도 폭·동적 단축·벽 페이드(C++)
   3. 시간의 4층위, 3단서+1질문, 밀도·리듬, 길찾기·프레이밍, 조명·발소리
   4. 방 배치 토폴로지·락앤키, 소품 밀도 예산, 방 단위 오클루전·수면, 예산표
+- **[docs/blender_asset_production_troubleshooting_guide.md](docs/blender_asset_production_troubleshooting_guide.md)** — 절차 생성 차량·실내 에셋 트러블슈팅
+  1. LP 저작: `IsLowPoly` 스위치, 프로파일 세그먼트 감축(sagitta 공식), 베벨 단계, 매니페스트
+  2. 복잡 곡면: Edge-Angle Decimate / QuadriFlow / VDB Remesh+Shrinkwrap 선택 기준, 3면 실루엣 오차
+  3. Shrinkwrap 가중치, Data Transfer 커스텀 노멀(4.1+ auto smooth 제거), 클러스터 6+1, LP 검증 게이트
+  4. 베이킹: 겹판(BVH 진단·익스플로전·복원), 광선 놓침(케이지 표준·Max Ray Distance 비교), 탄젠트와 3c
+  5. VRAM: MiB/밉/블록 규칙, 18 차종 1,440 MiB, ORM 패킹 66.7%, 2,000대 0.49 MiB, VT·스트리밍 풀, 실내 1024 타일
+  6. 12단계 체크리스트, 트러블슈팅 매트릭스, 엔진 임포트 세팅
 
 ## 오픈월드 월드 제작
 
@@ -328,6 +340,38 @@ python pipeline/indoor_metric_helper.py clutter --area 40 --grade dense
 배경 이론(플레이어·복도·문·계단 실측, 카메라 기하, 환경 스토리텔링, 방 단위 최적화)은
 [docs/indoor_exploration_and_spatial_metrics.md](docs/indoor_exploration_and_spatial_metrics.md)에 정리했습니다.
 
+## 차량 에셋 트러블슈팅과 VRAM
+
+차량 18 차종을 2,000대 배치하는 작업은 "폴리곤을 얼마나 줄일까"보다 **어디서 경계를 지킬까**의 문제입니다.
+LP 실루엣, 베이크 케이지, 탄젠트 기준, 텍스처 예산 — 네 경계를 수치로 고정하고 검사하는 도구가 함께 있습니다.
+
+```bash
+python -m pipeline.vehicle_asset_optimizer formats            # BC 포맷별 실크기(밉 포함)
+python -m pipeline.vehicle_asset_optimizer vram --chassis 18 --exterior 4096 --interior 2048
+python -m pipeline.vehicle_asset_optimizer packing --resolution 4096
+python -m pipeline.vehicle_asset_optimizer explode --demo --axis z --gap 0.02 --unit mm
+python -m pipeline.vehicle_asset_optimizer cage --demo
+python -m pipeline.vehicle_asset_optimizer checklist
+```
+
+```text
+차종당 합계    80.00 MiB  x18 = 1,440.0 MiB
+  예산 대비  14.1%  |  남는 양 8,800.0 MiB  |  판정 여유
+인스턴스 버퍼 2,000 x 256 B = 0.49 MiB
+```
+
+| 명령 | 계산하는 것 |
+| --- | --- |
+| `formats` | BC1~BC7·비압축 포맷의 bpp 와 4096/2048/1024 실크기(밉 포함) |
+| `vram` | 차종당·전체 텍스처 상주량, 예산 비율·판정, 절감 시나리오, 인스턴스 버퍼 |
+| `packing` | AO/Roughness/Metallic 분리 vs ORM 패킹 절감률 |
+| `explode` | 겹치는 부품의 익스플로전 오프셋과 잔여 겹침 검사 |
+| `cage` | 케이지 토폴로지·감싸기·여유(0.4~35%)·실루엣 검사 |
+| `checklist` | 익스포트·베이크 12단계 체크리스트 |
+
+배경(IsLowPoly 아키텍처, 3면 실루엣, 케이지·익스플로전, MikkTSpace·3c, RTX 3080 예산표)은
+[docs/blender_asset_production_troubleshooting_guide.md](docs/blender_asset_production_troubleshooting_guide.md)에 정리했습니다.
+
 ## MCP 토큰 최적화
 
 MCP 서버를 여러 개 붙이면 질문하기 전에 도구 정의만으로 수만 토큰이 나갑니다. 이 저장소에는 그 비용을 줄이는
@@ -373,10 +417,11 @@ slim = prune_tool_definition(raw_definition)                # JSON Schema 가지
 python -m unittest discover -s tests -v
 ```
 
-API 키 없이 돌아갑니다(236개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
+API 키 없이 돌아갑니다(345개). 가짜 GLB를 만들어 GLB 파싱·채널 매핑·ORM 패킹·payload 검증·재시도 로직을 확인하고,
 MCP 모듈은 100개 도구 카탈로그로 라우팅 정확도·결정성·스키마 프루닝·페이로드 압축을,
 오픈월드 헬퍼는 셀 반경·스트리밍 윈도우·랜드스케이프 정밀도·RVT 메모리·HLOD·체크리스트 점수를,
 실내 헬퍼는 카메라 자유 요·허용 암·피치 기하, 공간 판정과 블로커, 계단 비·법규·CMC, 프리셋 정합, 소품 밀도를,
+차량 도구(`tests/test_vehicle_asset_optimizer.py`)는 포맷 크기·밉 체인, 함대 예산과 판정, ORM 절감률, 익스플로전 그룹·잔여 겹침, 케이지 여유·실루엣, 문서 정합을,
 C++ 예제 검증(`tests/test_cpp_examples.py`)은 헤더 규약·선언↔정의·복제 대응·NetSerialize·문서 링크를 확인합니다.
 
 ```bash
